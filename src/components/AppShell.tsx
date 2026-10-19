@@ -14,6 +14,7 @@ const NAV = [
   { path: "/calendar", label: "Calendar" },
   { path: "/market", label: "Market" },
   { path: "/breeding", label: "Breeding" },
+  { path: "/ledger", label: "Ledger" },
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {

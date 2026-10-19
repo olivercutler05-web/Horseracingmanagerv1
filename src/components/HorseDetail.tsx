@@ -60,6 +60,14 @@ export function HorseDetail({ id }: { id: string }) {
             <StatBar label="Sharpness" value={h.sharpness} tone="sky" />
             <StatBar label="Workload" value={h.workload} tone="sky" warnAbove={60} />
           </div>
+          {h.trainer_report && h.trainer_report.length > 0 && (
+            <div className="mt-4 rounded-md bg-panel-2 p-3">
+              <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-turf">Trainer's report</p>
+              <ul className="space-y-1 text-xs text-muted">
+                {h.trainer_report.map((line, i) => <li key={i}>{line}</li>)}
+              </ul>
+            </div>
+          )}
         </section>
 
         {/* scouting profile */}

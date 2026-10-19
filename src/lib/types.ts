@@ -89,6 +89,7 @@ export interface Horse {
   earnings: number;
   history: RaceRecord[];
   price: number;
+  trainer_report: string[];
   entered_race_id: string | null;
   in_foal_to: string | null;
   in_foal_sire_id: string | null;
@@ -318,4 +319,12 @@ export interface SaveData {
   races: RaceInternal[];
   bets: Bet[];
   generated_weeks: number[];
+  ledger?: LedgerEntry[];
+}
+
+export interface LedgerEntry {
+  id: string;
+  week: number;
+  label: string;
+  amount: number; // positive = in, negative = out
 }

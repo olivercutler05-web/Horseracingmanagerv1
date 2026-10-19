@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as svc from "@/lib/service";
 import type {
-  AdvanceSummary, Bet, BreedingPreview, GameCreate, GameState, Horse, Race, Sire,
+  AdvanceSummary, Bet, BreedingPreview, GameCreate, GameState, Horse, LedgerEntry, Race, Sire,
 } from "@/lib/types";
 import { getMeta } from "@/lib/service";
 
@@ -56,6 +56,7 @@ export const useEnteredRaces = () => useCached<Race[]>("entered", () => svc.list
 export const useFeatures = () => useCached<Race[]>("features", () => svc.listFeatures());
 export const useRace = (id: string | undefined) => useCached<Race>(`race:${id}`, () => svc.getRace(id!), !!id);
 export const useBets = () => useCached<Bet[]>("bets", () => svc.listBets());
+export const useLedger = () => useCached<LedgerEntry[]>("ledger", () => svc.listLedger());
 export const useSires = () => useCached<Sire[]>("sires", () => svc.listSires());
 export const useBreedingPreview = (mareId?: string, sireId?: string) =>
   useCached<BreedingPreview>(`preview:${mareId}:${sireId}`, () => svc.breedingPreview(mareId!, sireId!), !!mareId && !!sireId);

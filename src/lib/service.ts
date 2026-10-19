@@ -1,14 +1,15 @@
 import { supabase } from "./supabase";
 import { SIRES, SIRES_BY_ID, TRACK_INFO, TRACKS } from "./racingData";
+import { EVIDENCE_LABELS } from "./format";
 import {
   ageYears, applyTraining, assignStyles, ceilingRating, clamp, describe, development, drawAiField, estimate, foalFrom,
   generateWeek, GESTATION_WEEKS, inherit, observe, performanceRatings, priceField, RACE_AGE_WEEKS, refresh, runnerFromHorse, SAVE_VERSION,
-  simulate, studProfile, TRAITS, TRAINING, TRAINABLE, UPKEEP_OTHER, UPKEEP_RACING, updatedRating, valuation, RNG, uid,
+  simulate, studProfile, trainerFeedback, TRAITS, TRAINING, TRAINABLE, UPKEEP_OTHER, UPKEEP_RACING, updatedRating, valuation, RNG, uid,
   weekSaturday, seasonLabel, weekOfSeason, type Derived,
 } from "./engine";
 import type {
   AdvanceSummary, Bet, BetCreate, BreedingPreview, EvidenceSource, GameCreate, GameState, Horse, HorseInternal,
-  Race, RaceInternal, RunnerInternal, ResultRow, SaveData, Sire, Trait,
+  LedgerEntry, Race, RaceInternal, RunnerInternal, ResultRow, SaveData, Sire, Trait,
 } from "./types";
 
 const LOOKAHEAD = 8;
@@ -25,6 +26,12 @@ const HIDDEN = new Set([
 const RUNNER_HIDDEN = new Set(["speed", "stamina", "acceleration", "early_speed", "efficiency", "consistency", "durability"]);
 
 export class GameError extends Error {}
+
+function record(s: SaveData, label: string, amount: number): void {
+  if (!s.ledger) s.ledger = [];
+  s.ledger.push({ id: uid(), week: s.week, label, amount: Math.round(amount) });
+  if (s.ledger.length > 400) s.ledger = s.ledger.slice(-300);
+}
 
 // ---------- save load / persist ----------
 async function loadSave(): Promise<SaveData | null> {
@@ -55,6 +62,7 @@ export function horsePublic(h: HorseInternal, week: number): Horse {
   out.profile = {} as Record<Trait, any>;
   for (const t of TRAITS) out.profile[t] = estimate(h, t, week);
   out.development = devLabel(h, week);
+  out.trainer_report = trainerFeedback(h, week);
   const k = h.knowledge;
   const known = (k.aerobic ?? 0) + (k.fast_twitch ?? 0) >= 0.35 * 2;
   out.best_distance = known ? h.best_distance : null;
@@ -224,9 +232,10 @@ export async function inspectHorse(id: string, source: EvidenceSource): Promise<
   if (!h) throw new GameError("Horse not found");
   if (source !== "walk_video" && source !== "inspection" && source !== "vet") throw new GameError("Unknown inspection type");
   const cost = INSPECT_COST[source];
-  if (s.cash < cost) throw new GameError(`Not enough funds — need $${cost.toLocaleString()}`);
+  if (s.cash < cost) throw new GameError(`Not enough funds — need ${cost.toLocaleString()}`);
   observe(h, source, s.week);
   s.cash -= cost;
+  record(s, `${EVIDENCE_LABELS[source]} — ${h.name}`, -cost);
   await persist(s);
   return horsePublic(h, s.week);
 }
@@ -240,6 +249,7 @@ export async function sellHorse(id: string): Promise<{ horse: Horse; price: numb
   const price = Math.floor(valuation(h, s.week) * 0.85);
   s.horses = s.horses.filter((x) => x.id !== id);
   s.cash += price;
+  record(s, `Sold ${h.name}`, price);
   await persist(s);
   return { price, horse: { ...horsePublic(h, s.week), price } };
 }
@@ -284,6 +294,7 @@ export async function buyHorse(id: string): Promise<Horse> {
   if (s.cash < h.price) throw new GameError(`Not enough funds — need $${h.price.toLocaleString()}`);
   h.owner = "player";
   s.cash -= h.price;
+  record(s, `Bought ${h.name}`, -h.price);
   await persist(s);
   return horsePublic(h, s.week);
 }
@@ -342,6 +353,7 @@ export async function breed(req: { mare_id: string; sire_id: string }): Promise<
   if (s.cash < fee) throw new GameError(`Not enough funds — need $${fee.toLocaleString()}`);
   mare.in_foal_to = sire.name; mare.in_foal_sire_id = sire.id; mare.due_week = s.week + GESTATION_WEEKS;
   s.cash -= fee;
+  record(s, `Stud fee — ${mare.name} to ${sire.name}`, -fee);
   await persist(s);
   return horsePublic(mare, s.week);
 }
@@ -426,6 +438,7 @@ export async function enterRace(raceId: string, horseId: string): Promise<Race> 
   priceField(race);
   h.entered_race_id = raceId;
   s.cash -= cost;
+  record(s, `Entry — ${h.name} in ${race.name}`, -cost);
   await persist(s);
   return racePublic(race);
 }
@@ -444,6 +457,7 @@ export async function scratchHorse(raceId: string, horseId: string): Promise<Rac
   let refund = 0;
   for (const b of s.bets) if (b.status === "pending" && b.race_id === raceId && b.runner_id === removed.id) { refund += b.stake; b.status = "lost"; b.payout = 0; }
   s.cash += refund;
+  if (refund > 0) record(s, `Bet refund — ${race.name}`, refund);
   await persist(s);
   return racePublic(race);
 }
@@ -487,6 +501,7 @@ export async function runRace(raceId: string): Promise<Race> {
     }, ...h.history];
     refresh(h, s.week);
     prizeTotal += row.prize;
+    if (row.prize > 0) record(s, `Prize — ${row.position === 1 ? "1st" : row.position <= 3 ? `${ord(row.position)} ` : ""}${h.name}, ${race.name}`, row.prize);
   }
   const positions = new Map(result.map((r) => [r.runner_id, r.position]));
   const places = result.length <= 7 ? 2 : 3;
@@ -498,16 +513,27 @@ export async function runRace(raceId: string): Promise<Race> {
     b.payout = won ? Math.round(b.stake * b.odds) : 0;
     b.status = won ? "won" : "lost";
     betReturns += b.payout;
+    if (b.payout > 0) record(s, `Bet won — ${b.runner_name} @ ${b.odds.toFixed(1)}`, b.payout);
   }
   s.cash += prizeTotal + betReturns;
   await persist(s);
   return racePublic(race);
 }
 
+function ord(n: number): string {
+  const s = ["th", "st", "nd", "rd"], v = n % 100;
+  return n + (s[(v - 20) % 10] || s[v] || s[0]);
+}
+
 // ---------- bets ----------
 export async function listBets(): Promise<Bet[]> {
   const s = await save0();
   return s.bets.slice().sort((a, b) => b.week - a.week);
+}
+
+export async function listLedger(): Promise<LedgerEntry[]> {
+  const s = await save0();
+  return (s.ledger ?? []).slice().reverse();
 }
 
 export async function placeBet(req: BetCreate): Promise<Bet> {
@@ -526,6 +552,7 @@ export async function placeBet(req: BetCreate): Promise<Bet> {
   };
   s.bets.push(bet);
   s.cash -= req.stake;
+  record(s, `Bet — ${req.kind} ${runner.name} @ ${bet.odds.toFixed(1)}`, -req.stake);
   await persist(s);
   return bet;
 }
@@ -599,6 +626,7 @@ export async function advanceWeek(): Promise<AdvanceSummary> {
       }, ...h.history];
       refresh(h, s.week);
       prizeMoney += row.prize;
+      if (row.prize > 0) record(s, `Prize — ${h.name}, ${race.name}`, row.prize);
       if (row.position === 1) lines.push(`Winner: ${h.name} — ${race.name} at ${race.track} (${money(row.prize)})`);
       else if (row.position <= 3) lines.push(`${h.name} ran ${row.position}th in the ${race.name}`);
     }
@@ -611,6 +639,7 @@ export async function advanceWeek(): Promise<AdvanceSummary> {
       b.payout = won ? Math.round(b.stake * b.odds) : 0;
       b.status = won ? "won" : "lost";
       betReturns += b.payout;
+      if (b.payout > 0) record(s, `Bet won — ${b.runner_name} @ ${b.odds.toFixed(1)}`, b.payout);
     }
   }
   s.cash += prizeMoney + betReturns;
@@ -621,6 +650,7 @@ export async function advanceWeek(): Promise<AdvanceSummary> {
     if (h.owner !== "player") continue;
     upkeep += h.status === "racing" ? UPKEEP_RACING : UPKEEP_OTHER;
   }
+  if (upkeep > 0) record(s, `Weekly upkeep — ${s.horses.filter((x) => x.owner === "player").length} horses`, -upkeep);
   s.cash -= upkeep;
 
   // 5. advance week

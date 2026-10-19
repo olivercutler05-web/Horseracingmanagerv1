@@ -10,6 +10,7 @@ import { Calendar } from "@/components/Calendar";
 import { RaceDetail } from "@/components/RaceDetail";
 import { Breeding } from "@/components/Breeding";
 import { Market } from "@/components/Market";
+import { Ledger } from "@/components/Ledger";
 import { EmptyState } from "@/components/bits";
 import { Link } from "@/router";
 
@@ -45,6 +46,7 @@ function Pages() {
     case "/calendar": return <Calendar />;
     case "/market": return <Market />;
     case "/breeding": return <Breeding />;
+    case "/ledger": return <Ledger />;
     default: return <EmptyState>Page not found. <Link href="/" className="text-turf">Go home</Link></EmptyState>;
   }
 }
