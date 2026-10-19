@@ -1,0 +1,27 @@
+@import "@fontsource-variable/outfit";
+@import "@fontsource-variable/dm-sans";
+@import "@fontsource-variable/jetbrains-mono";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    line-height: 1.5;
+  }
+  h1, h2, h3 {
+    @apply font-heading tracking-tight;
+    line-height: 1.2;
+  }
+}
+
+@layer utilities {
+  .font-mono { font-family: "'JetBrains Mono Variable', monospace"; }
+  .animate-rise { animation: rise 150ms ease-out both; }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #253D32; border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: #34D39966; }
+}
